@@ -15,6 +15,8 @@ import com.robinhood.dto.TradeRequest;
 import com.robinhood.dto.TradeResponse;
 import com.robinhood.service.TradeService;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/trades")
 public class TradeController {
@@ -27,7 +29,7 @@ public class TradeController {
 
     @PostMapping
     public ResponseEntity<TradeResponse> executeTrade(
-            @RequestBody TradeRequest request) {
+           @Valid @RequestBody TradeRequest request) {
 
         TradeResponse response = tradeService.executeTrade(request);
 
