@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getMe } from '../api/users';
+import { getHoldingsByUserId } from '../api/holdings';
 import { useAuth } from '../context/AuthContext';
 import {
   getTradeById,
@@ -52,45 +53,6 @@ function PositionRow({
   );
 }
 
-const MOCK_POSITIONS = [
-  {
-    symbol: 'AAPL',
-    name: 'Apple Inc.',
-    shares: 5,
-    price: '182.52',
-    totalValue: '912.60',
-    change: '1.24',
-    positive: true,
-  },
-  {
-    symbol: 'TSLA',
-    name: 'Tesla, Inc.',
-    shares: 2,
-    price: '248.87',
-    totalValue: '497.74',
-    change: '-2.11',
-    positive: false,
-  },
-  {
-    symbol: 'NVDA',
-    name: 'NVIDIA Corp.',
-    shares: 3,
-    price: '875.40',
-    totalValue: '2626.20',
-    change: '3.47',
-    positive: true,
-  },
-  {
-    symbol: 'GOOGL',
-    name: 'Alphabet Inc.',
-    shares: 1,
-    price: '174.14',
-    totalValue: '174.14',
-    change: '0.62',
-    positive: true,
-  },
-];
-
 export default function DashboardPage() {
   const { user } = useAuth();
 
@@ -101,6 +63,7 @@ export default function DashboardPage() {
   const [tradeResults, setTradeResults] = useState([]);
   const [tradeError, setTradeError] = useState('');
   const [tradeHistory, setTradeHistory] = useState([]);
+  const [positions, setPositions] = useState([]);
 
   const handleTradeSearch = async () => {
     const searchValue = tradeSearch.trim();
@@ -150,6 +113,21 @@ export default function DashboardPage() {
         console.error('Order history failed:', error);
         setTradeHistory([]);
       });
+      getHoldingsByUserId(1)
+  .then((response) => {
+    console.log("Holdings Response:", response.data);
+
+    if (Array.isArray(response.data)) {
+      setPositions(response.data);
+    } else {
+      setPositions([]);
+    }
+  })
+  .catch((error) => {
+    console.error("Holdings Status:", error.response?.status);
+    console.error("Holdings Error Response:", error.response?.data);
+    setPositions([]);
+  });
   }, []);
 
   const displayName = profile
@@ -170,6 +148,20 @@ export default function DashboardPage() {
 
   const currentHour = new Date().getHours();
   const marketOpen = currentHour >= 9 && currentHour < 16;
+
+  // Temporarily use the latest trade price until Market Service is implemented.
+  const getLatestPrice = (stockSymbol) => {
+    const stockTrades = tradeHistory.filter(
+      (trade) => trade.stockSymbol === stockSymbol
+    );
+
+    if (stockTrades.length === 0) {
+      return 0;
+    }
+
+    const latestTrade = stockTrades[stockTrades.length - 1];
+    return Number(latestTrade.price) || 0;
+  };
 
   return (
     <div className="dashboard">
@@ -331,9 +323,23 @@ export default function DashboardPage() {
             <span>Value</span>
           </div>
 
-          {MOCK_POSITIONS.map((position) => (
-            <PositionRow key={position.symbol} {...position} />
-          ))}
+          {positions.map((position) => {
+            const price = getLatestPrice(position.stockSymbol);
+            const totalValue = price * Number(position.quantity);
+
+            return (
+              <PositionRow
+                key={position.stockSymbol}
+                symbol={position.stockSymbol}
+                name={position.stockSymbol}
+                shares={position.quantity}
+                price={price.toFixed(2)}
+                totalValue={totalValue.toFixed(2)}
+                change="0.00"
+                positive={true}
+              />
+            );
+          })}
         </div>
 
         <p className="mock-note">
