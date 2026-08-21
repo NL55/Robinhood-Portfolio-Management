@@ -35,7 +35,27 @@ public class TradeServiceImpl implements TradeService {
     @Override
     @Transactional
     public TradeResponse executeTrade(TradeRequest request) {
-
+    
+        if (request.getQuantity() <= 0) {
+            throw new IllegalArgumentException(
+                    "Quantity must be greater than zero"
+            );
+        }
+    
+        if (request.getPrice() <= 0) {
+            throw new IllegalArgumentException(
+                    "Price must be greater than zero"
+            );
+        }
+    
+        if (request.getStockSymbol() == null ||
+                request.getStockSymbol().trim().isEmpty()) {
+    
+            throw new IllegalArgumentException(
+                    "Stock symbol is required"
+            );
+        }
+    
         String stockSymbol =
                 request.getStockSymbol().trim().toUpperCase();
 
