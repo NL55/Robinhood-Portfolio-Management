@@ -36,4 +36,54 @@ class HoldingRepositoryTest {
         assertEquals("AAPL", savedHolding.getStockSymbol());
         assertEquals(120, savedHolding.getQuantity());
     }
+    @Test
+void testFindByUserIdAndStockSymbol() {
+
+    // ARRANGE
+    Holding holding = new Holding();
+
+    holding.setUserId(1L);
+    holding.setStockSymbol("AAPL");
+    holding.setQuantity(120);
+
+    holdingRepository.save(holding);
+
+    // ACT
+    var result =
+            holdingRepository.findByUserIdAndStockSymbol(
+                    1L,
+                    "AAPL"
+            );
+
+    // ASSERT
+    assertTrue(result.isPresent());
+
+    Holding foundHolding = result.get();
+
+    assertEquals(1L, foundHolding.getUserId());
+    assertEquals("AAPL", foundHolding.getStockSymbol());
+    assertEquals(120, foundHolding.getQuantity());
+}
+@Test
+void testFindByUserIdAndStockSymbolNotFound() {
+
+    // ARRANGE
+    Holding holding = new Holding();
+
+    holding.setUserId(1L);
+    holding.setStockSymbol("AAPL");
+    holding.setQuantity(120);
+
+    holdingRepository.save(holding);
+
+    // ACT
+    var result =
+            holdingRepository.findByUserIdAndStockSymbol(
+                    1L,
+                    "TSLA"
+            );
+
+    // ASSERT
+    assertTrue(result.isEmpty());
+}
 }
