@@ -15,7 +15,7 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 
-public class Traderequestvalidationtest {
+class TradeRequestValidationTest{
 
     private Validator validator;
 

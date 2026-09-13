@@ -17,7 +17,7 @@ import com.robinhood.entity.Holding;
 import com.robinhood.service.HoldingService;
 
 @WebMvcTest(HoldingController.class)
-public class Holdingcontrollertest {
+class HoldingControllerTest {
 
     @Autowired
     private MockMvc mockMvc;

@@ -23,7 +23,7 @@ import com.robinhood.enums.TradeType;
 import com.robinhood.service.TradeService;
 
 @WebMvcTest(TradeController.class)
-public class Tradecontrollertest {
+class TradeControllerTest {
 
     @Autowired
     private MockMvc mockMvc;

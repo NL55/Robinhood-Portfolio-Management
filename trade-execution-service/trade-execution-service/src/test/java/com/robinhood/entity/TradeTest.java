@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import com.robinhood.enums.TradeStatus;
 import com.robinhood.enums.TradeType;
 
-public class Tradetest {
+public class TradeTest {
 
     @Test
     void testTradeFields() {
