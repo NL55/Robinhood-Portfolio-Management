@@ -1,0 +1,38 @@
+
+name: Robinhood CI Pipeline
+
+on:
+  push:
+    branches:
+      - feature-branch
+
+  workflow_dispatch:
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build User Service Docker Image
+        run: |
+          docker build \
+            -t robinhood-user-service:ci \
+            ./user-service
+
+      - name: Build Trade Execution Service Docker Image
+        run: |
+          docker build \
+            -t robinhood-trade-service:ci \
+            ./trade-execution-service/trade-execution-service
+
+      - name: Build React Frontend Docker Image
+        run: |
+          docker build \
+            -t robinhood-frontend:ci \
+            ./frontend
