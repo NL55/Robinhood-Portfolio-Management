@@ -1,0 +1,20 @@
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Maven build files
+**/target/
+
+# Application logs
+*.log
+*-error.txt
+
+# AWS keys
+*.pem
+*.key
+
+# IDE settings
+.vscode/
+.idea/
