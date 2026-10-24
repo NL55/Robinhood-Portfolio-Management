@@ -1,12 +1,14 @@
 
 name: Robinhood CD - Deploy to EC2
 
+# Start deployment manually from GitHub Actions
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Prevent simultaneous EC2 deployments
 concurrency:
   group: robinhood-ec2-deployment
   cancel-in-progress: false
@@ -14,23 +16,47 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
+      # =====================================
+      # STEP 1 - Checkout GitHub Repository
+      # =====================================
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: feature-branch
 
+      # =====================================
+      # STEP 2 - Build User Service
+      # =====================================
       - name: Build User Service
         run: |
-          docker build -t robinhood-user-service:latest ./user-service
+          docker build \
+            -t robinhood-user-service:latest \
+            ./user-service
 
+      # =====================================
+      # STEP 3 - Build Trade Execution Service
+      # =====================================
       - name: Build Trade Service
         run: |
-          docker build -t robinhood-trade-service:latest ./trade-execution-service/trade-execution-service
+          docker build \
+            -t robinhood-trade-service:latest \
+            ./trade-execution-service/trade-execution-service
 
+      # =====================================
+      # STEP 4 - Build React Frontend
+      # =====================================
       - name: Build React Frontend
         run: |
-          docker build -t robinhood-frontend:latest ./frontend
+          docker build \
+            -t robinhood-frontend:latest \
+            ./frontend
 
+      # =====================================
+      # STEP 5 - Package Docker Images
+      # =====================================
       - name: Package Docker images
         run: |
           docker save \
@@ -39,12 +65,19 @@ jobs:
             robinhood-frontend:latest \
             | gzip -1 > robinhood-images.tar.gz
 
+          ls -lh robinhood-images.tar.gz
+
+      # =====================================
+      # STEP 6 - Configure Secure SSH
+      # =====================================
       - name: Configure secure SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_HOST_FINGERPRINT: ${{ secrets.EC2_HOST_FINGERPRINT }}
         run: |
+          set -euo pipefail
+
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
@@ -54,13 +87,29 @@ jobs:
           ssh-keyscan -T 10 -t ed25519 "$EC2_HOST" \
             > ~/.ssh/known_hosts 2>/dev/null
 
-          ACTUAL_FINGERPRINT=$(ssh-keygen -lf ~/.ssh/known_hosts -E sha256 | awk '{print $2}')
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
-          if [ "$ACTUAL_FINGERPRINT" != "$EC2_HOST_FINGERPRINT" ]; then
-            echo "EC2 host fingerprint mismatch"
+          ACTUAL_FINGERPRINT=$(
+            ssh-keygen -lf ~/.ssh/known_hosts -E sha256 |
+            awk 'NR==1 {print $2}'
+          )
+
+          EXPECTED_FINGERPRINT=$(
+            printf '%s' "$EC2_HOST_FINGERPRINT" |
+            tr -d '\r\n '
+          )
+
+          if [ "$ACTUAL_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]; then
+            echo "ERROR: EC2 host fingerprint mismatch"
             exit 1
           fi
 
+          echo "EC2 SSH host fingerprint verified"
+
+      # =====================================
+      # STEP 7 - Transfer Images to EC2
+      # =====================================
       - name: Transfer images to EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
@@ -68,9 +117,15 @@ jobs:
         run: |
           scp -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
             robinhood-images.tar.gz \
             "$EC2_USER@$EC2_HOST:~/robinhood-images.tar.gz"
 
+          echo "Docker images transferred to EC2"
+
+      # =====================================
+      # STEP 8 - Deploy Docker Containers
+      # =====================================
       - name: Deploy Docker containers
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
@@ -78,31 +133,76 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
             "$EC2_USER@$EC2_HOST" 'bash -se' <<'REMOTE'
-          set -e
+
+          set -euo pipefail
 
           cd ~/Robinhood-Portfolio-Management
 
+          echo "Updating project configuration..."
           git pull --ff-only origin feature-branch
 
+          echo "Loading Docker images..."
           docker load -i ~/robinhood-images.tar.gz
 
-          docker compose up -d --no-build --no-deps --force-recreate \
-            user-service trade-execution-service frontend
+          echo "Recreating application containers..."
+          docker compose up -d \
+            --no-build \
+            --no-deps \
+            --force-recreate \
+            user-service \
+            trade-execution-service \
+            frontend
 
-          curl --fail --silent --show-error \
-            --retry 12 --retry-connrefused --retry-delay 5 \
-            http://localhost:8081/actuator/health
+          # =================================
+          # STEP 9 - Health Checks with Retry
+          # =================================
+          check_health() {
+            name="$1"
+            url="$2"
 
-          curl --fail --silent --show-error \
-            --retry 12 --retry-connrefused --retry-delay 5 \
-            http://localhost:8082/actuator/health
+            echo "Checking $name..."
 
-          curl --fail --silent --show-error \
-            --retry 12 --retry-connrefused --retry-delay 5 \
-            http://localhost/ > /dev/null
+            for attempt in $(seq 1 24); do
 
+              if curl \
+                --fail \
+                --silent \
+                --max-time 5 \
+                "$url" > /dev/null; then
+
+                echo "SUCCESS: $name is healthy"
+                return 0
+              fi
+
+              echo "$name is starting - attempt $attempt/24"
+
+              sleep 5
+            done
+
+            echo "ERROR: $name failed health verification"
+            return 1
+          }
+
+          check_health "User Service" \
+            "http://localhost:8081/actuator/health"
+
+          check_health "Trade Execution Service" \
+            "http://localhost:8082/actuator/health"
+
+          check_health "React Frontend" \
+            "http://localhost/"
+
+          # =================================
+          # STEP 10 - Verify Docker Containers
+          # =================================
+          echo "Final Docker container status:"
           docker compose ps
 
+          echo "Removing transferred image archive..."
           rm -f ~/robinhood-images.tar.gz
+
+          echo "Robinhood EC2 deployment successful"
+
           REMOTE
