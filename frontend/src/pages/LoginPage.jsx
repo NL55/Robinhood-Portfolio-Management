@@ -34,7 +34,7 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1 className="auth-title">Welcome back</h1>
+        <h1 className="auth-title">Nari Welcome back</h1>
         <p className="auth-subtitle">Log in to your account</p>
 
         {error && <div className="alert alert-error">{error}</div>}
