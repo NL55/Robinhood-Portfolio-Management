@@ -1,0 +1,108 @@
+
+name: Robinhood CD - Deploy to EC2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: robinhood-ec2-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build User Service
+        run: |
+          docker build -t robinhood-user-service:latest ./user-service
+
+      - name: Build Trade Service
+        run: |
+          docker build -t robinhood-trade-service:latest ./trade-execution-service/trade-execution-service
+
+      - name: Build React Frontend
+        run: |
+          docker build -t robinhood-frontend:latest ./frontend
+
+      - name: Package Docker images
+        run: |
+          docker save \
+            robinhood-user-service:latest \
+            robinhood-trade-service:latest \
+            robinhood-frontend:latest \
+            | gzip -1 > robinhood-images.tar.gz
+
+      - name: Configure secure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_HOST_FINGERPRINT: ${{ secrets.EC2_HOST_FINGERPRINT }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -T 10 -t ed25519 "$EC2_HOST" \
+            > ~/.ssh/known_hosts 2>/dev/null
+
+          ACTUAL_FINGERPRINT=$(ssh-keygen -lf ~/.ssh/known_hosts -E sha256 | awk '{print $2}')
+
+          if [ "$ACTUAL_FINGERPRINT" != "$EC2_HOST_FINGERPRINT" ]; then
+            echo "EC2 host fingerprint mismatch"
+            exit 1
+          fi
+
+      - name: Transfer images to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          scp -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            robinhood-images.tar.gz \
+            "$EC2_USER@$EC2_HOST:~/robinhood-images.tar.gz"
+
+      - name: Deploy Docker containers
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            "$EC2_USER@$EC2_HOST" 'bash -se' <<'REMOTE'
+          set -e
+
+          cd ~/Robinhood-Portfolio-Management
+
+          git pull --ff-only origin feature-branch
+
+          docker load -i ~/robinhood-images.tar.gz
+
+          docker compose up -d --no-build --no-deps --force-recreate \
+            user-service trade-execution-service frontend
+
+          curl --fail --silent --show-error \
+            --retry 12 --retry-connrefused --retry-delay 5 \
+            http://localhost:8081/actuator/health
+
+          curl --fail --silent --show-error \
+            --retry 12 --retry-connrefused --retry-delay 5 \
+            http://localhost:8082/actuator/health
+
+          curl --fail --silent --show-error \
+            --retry 12 --retry-connrefused --retry-delay 5 \
+            http://localhost/ > /dev/null
+
+          docker compose ps
+
+          rm -f ~/robinhood-images.tar.gz
+          REMOTE
