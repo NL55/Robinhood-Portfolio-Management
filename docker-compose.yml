@@ -1,15 +1,8 @@
 
-# Robinhood Microservices - Docker Compose
-# Works locally and on AWS EC2
-#
-# Start core services:
-# docker compose up -d --build
-#
-# Start all optional infrastructure:
-# docker compose --profile full up -d --build
-#
-# Stop:
-# docker compose --profile full down
+# ========================================
+# ROBINHOOD PORTFOLIO MANAGEMENT
+# Docker Compose - AWS EC2 Deployment
+# ========================================
 
 services:
 
@@ -69,11 +62,13 @@ services:
 
   # ========================================
   # POSTGRESQL - PORTFOLIO DATABASE
+  # Optional - full profile
   # ========================================
 
   postgres-portfolio:
     image: postgres:16-alpine
     container_name: postgres-portfolio
+
     profiles:
       - full
 
@@ -160,12 +155,36 @@ services:
     restart: unless-stopped
 
   # ========================================
+  # FRONTEND - REACT + NGINX
+  # NEW: AWS EC2 Frontend Deployment
+  # ========================================
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+    image: robinhood-frontend:latest
+    container_name: robinhood-frontend
+
+    ports:
+      - "80:80"
+
+    depends_on:
+      - user-service
+      - trade-execution-service
+
+    restart: unless-stopped
+
+  # ========================================
   # REDIS - CACHE
+  # Optional - full profile
   # ========================================
 
   redis:
     image: redis:7-alpine
     container_name: redis
+
     profiles:
       - full
 
@@ -176,11 +195,13 @@ services:
 
   # ========================================
   # ZOOKEEPER
+  # Optional - full profile
   # ========================================
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     container_name: zookeeper
+
     profiles:
       - full
 
@@ -192,11 +213,13 @@ services:
 
   # ========================================
   # APACHE KAFKA
+  # Optional - full profile
   # ========================================
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: kafka
+
     profiles:
       - full
 
@@ -211,11 +234,8 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
 
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
-
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
-
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
 
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
@@ -225,11 +245,13 @@ services:
 
   # ========================================
   # KAFKA UI
+  # Optional - full profile
   # ========================================
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
+
     profiles:
       - full
 
