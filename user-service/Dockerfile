@@ -1,15 +1,32 @@
 
-# Use Java 21 runtime
-FROM eclipse-temurin:21-jre
+# ==========================================
+# Stage 1: Build User Service using Maven
+# ==========================================
 
-# Set working directory
+FROM maven:3.9-eclipse-temurin-21 AS build
+
 WORKDIR /app
 
-# Copy compiled Spring Boot JAR
-COPY target/*.jar app.jar
+# Copy Maven configuration
+COPY pom.xml .
 
-# User Service port
+# Copy application source code
+COPY src ./src
+
+# Build Spring Boot application
+RUN mvn -B clean package -DskipTests
+
+# ==========================================
+# Stage 2: Run User Service using Java 21
+# ==========================================
+
+FROM eclipse-temurin:21-jre
+
+WORKDIR /app
+
+# Copy the built JAR from Maven stage
+COPY --from=build /app/target/*.jar app.jar
+
 EXPOSE 8081
 
-# Start Spring Boot
 ENTRYPOINT ["java", "-jar", "app.jar"]
