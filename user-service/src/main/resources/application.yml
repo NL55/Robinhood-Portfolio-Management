@@ -1,34 +1,55 @@
+
 spring:
   application:
     name: user-service
 
+  # PostgreSQL Database Configuration
   datasource:
-    url: jdbc:postgresql://localhost:5432/userdb
-    username: postgres
-    password: postgres
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/userdb}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
 
+  # JPA / Hibernate Configuration
   jpa:
     hibernate:
-      # create-drop: recreates schema on every start (good for dev, NEVER use in prod)
-      # validate:    checks schema matches entities (use in prod)
-      # update:      adds missing columns (risky in prod, use Flyway/Liquibase instead)
-      ddl-auto: create-drop
-    show-sql: true
+      # Development only.
+      # Use migrations and validate in production.
+      ddl-auto: ${DDL_AUTO:update}
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
+# Server Configuration
 server:
-  port: 8081
+  port: ${SERVER_PORT:8081}
 
+# JWT Authentication Configuration
 jwt:
-  # CHANGE THIS in production — use a long random string, inject via env var
-  secret: "robinhood-super-secret-jwt-key-change-in-production-must-be-32-chars-min"
-  expiration-ms: 86400000   # 24 hours in milliseconds
+  secret: ${JWT_SECRET}
+  expiration-ms: 86400000
 
+# Spring Boot Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+  endpoint:
+    health:
+      enabled: true
+      show-details: never
+
+  health:
+    db:
+      enabled: true
+
+# Logging Configuration
 logging:
   level:
-    com.robinhood: DEBUG
-    org.springframework.security: DEBUG
+    com.robinhood: INFO
+    org.springframework.security: WARN
+    org.springframework.boot.actuate: INFO

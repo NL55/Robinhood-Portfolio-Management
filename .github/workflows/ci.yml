@@ -1,0 +1,71 @@
+
+
+name: Robinhood CI Pipeline
+
+on:
+  push:
+    branches:
+      - feature-branch
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+jobs:
+  junit-tests:
+    name: Run JUnit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: |
+            user-service/pom.xml
+            trade-execution-service/trade-execution-service/pom.xml
+
+      - name: Run User Service JUnit Tests
+        working-directory: ./user-service
+        run: mvn -B clean test
+
+      - name: Run Trade Execution Service JUnit Tests
+        working-directory: ./trade-execution-service/trade-execution-service
+        run: mvn -B clean test
+
+  docker-build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: junit-tests
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build User Service Docker Image
+        run: |
+          docker build \
+            -t robinhood-user-service:ci \
+            ./user-service
+
+      - name: Build Trade Execution Service Docker Image
+        run: |
+          docker build \
+            -t robinhood-trade-service:ci \
+            ./trade-execution-service/trade-execution-service
+
+      - name: Build React Frontend Docker Image
+        run: |
+          docker build \
+            -t robinhood-frontend:ci \
+            ./frontend

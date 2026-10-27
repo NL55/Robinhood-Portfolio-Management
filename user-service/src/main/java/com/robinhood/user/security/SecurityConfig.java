@@ -1,5 +1,7 @@
+
 package com.robinhood.user.security;
 
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -24,30 +26,66 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
         http
-            // Disable CSRF — we use stateless JWTs, not browser sessions/cookies
+            // Disable CSRF for stateless JWT authentication
             .csrf(AbstractHttpConfigurer::disable)
 
-            // Stateless: Spring won't create HTTP sessions; each request must carry its JWT
-            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // Do not create HTTP sessions
+            .sessionManagement(session ->
+                session.sessionCreationPolicy(
+                    SessionCreationPolicy.STATELESS
+                )
+            )
 
             .authorizeHttpRequests(auth -> auth
-                // Public endpoints — no JWT needed
-                .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
-                // Everything else requires a valid JWT
+
+                // Spring Boot Actuator health endpoint
+                // No JWT required
+                .requestMatchers(
+                    HttpMethod.GET,
+                    "/actuator/health",
+                    "/actuator/health/**"
+                ).permitAll()
+
+                // Public registration endpoint
+                .requestMatchers(
+                    HttpMethod.POST,
+                    "/api/v1/auth/register"
+                ).permitAll()
+
+                // Public login endpoint
+                .requestMatchers(
+                    HttpMethod.POST,
+                    "/api/v1/auth/login"
+                ).permitAll()
+
+                // All other endpoints require authentication
                 .anyRequest().authenticated()
             )
 
-            // Run our JWT filter before Spring's default username/password filter
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+            // Validate JWT before username/password authentication
+            .addFilterBefore(
+                jwtAuthFilter,
+                UsernamePasswordAuthenticationFilter.class
+            );
 
         return http.build();
     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        // BCrypt automatically salts and hashes. Work factor 12 = ~300ms per hash (intentionally slow).
         return new BCryptPasswordEncoder(12);
     }
+    @Bean
+public FilterRegistrationBean<JwtAuthFilter> jwtFilterRegistration(
+        JwtAuthFilter filter) {
+
+    FilterRegistrationBean<JwtAuthFilter> registration =
+            new FilterRegistrationBean<>(filter);
+
+    registration.setEnabled(false);
+
+    return registration;
+}
 }

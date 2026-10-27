@@ -2,12 +2,21 @@ import axios from 'axios';
 
 const client = axios.create({
   baseURL: '',
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  const isHoldingsRequest = config.url?.startsWith('/api/holdings/');
+  const isTradeRequest = config.url?.startsWith('/api/trades/');
+
+  if (token && !isHoldingsRequest && !isTradeRequest) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
   return config;
 });
 
@@ -18,6 +27,7 @@ client.interceptors.response.use(
       localStorage.removeItem('token');
       window.location.href = '/login';
     }
+
     return Promise.reject(err);
   }
 );

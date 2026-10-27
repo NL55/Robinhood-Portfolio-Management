@@ -1,91 +1,275 @@
-version: '3.9'
 
-# This file spins up all infrastructure needed for local development.
-# Run: docker-compose up -d
-# Stop: docker-compose down
+# ========================================
+# ROBINHOOD PORTFOLIO MANAGEMENT
+# Docker Compose - AWS EC2 Deployment
+# ========================================
 
 services:
 
-  # ── Databases ──────────────────────────────────────────────────────────────
+  # ========================================
+  # POSTGRESQL - USER DATABASE
+  # ========================================
 
   postgres-users:
     image: postgres:16-alpine
     container_name: postgres-users
+
     environment:
       POSTGRES_DB: userdb
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
+
     volumes:
       - postgres_users_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+  # ========================================
+  # POSTGRESQL - TRADING DATABASE
+  # ========================================
 
   postgres-trading:
     image: postgres:16-alpine
     container_name: postgres-trading
+
     environment:
       POSTGRES_DB: tradingdb
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
+
     volumes:
       - postgres_trading_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+  # ========================================
+  # POSTGRESQL - PORTFOLIO DATABASE
+  # Optional - full profile
+  # ========================================
 
   postgres-portfolio:
     image: postgres:16-alpine
     container_name: postgres-portfolio
+
+    profiles:
+      - full
+
     environment:
       POSTGRES_DB: portfoliodb
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
+
     volumes:
       - postgres_portfolio_data:/var/lib/postgresql/data
 
-  # ── Cache ──────────────────────────────────────────────────────────────────
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+  # ========================================
+  # USER SERVICE - SPRING BOOT
+  # ========================================
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+
+    image: robinhood-user-service:latest
+    container_name: user-service
+
+    ports:
+      - "8081:8081"
+
+    environment:
+      SPRING_APPLICATION_NAME: user-service
+      SERVER_PORT: 8081
+
+      DB_URL: jdbc:postgresql://postgres-users:5432/userdb
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+
+      DDL_AUTO: update
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+
+    depends_on:
+      postgres-users:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  # ========================================
+  # TRADE EXECUTION SERVICE - SPRING BOOT
+  # ========================================
+
+  trade-execution-service:
+    build:
+      context: ./trade-execution-service/trade-execution-service
+      dockerfile: Dockerfile
+
+    image: robinhood-trade-service:latest
+    container_name: trade-execution-service
+
+    ports:
+      - "8082:8082"
+
+    environment:
+      SPRING_APPLICATION_NAME: trade-execution-service
+      SERVER_PORT: 8082
+
+      DB_URL: jdbc:postgresql://postgres-trading:5432/tradingdb
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+
+      DDL_AUTO: update
+
+    depends_on:
+      postgres-trading:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  # ========================================
+  # FRONTEND - REACT + NGINX
+  # NEW: AWS EC2 Frontend Deployment
+  # ========================================
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+    image: robinhood-frontend:latest
+    container_name: robinhood-frontend
+
+    ports:
+      - "80:80"
+
+    depends_on:
+      - user-service
+      - trade-execution-service
+
+    restart: unless-stopped
+
+  # ========================================
+  # REDIS - CACHE
+  # Optional - full profile
+  # ========================================
 
   redis:
     image: redis:7-alpine
     container_name: redis
-    ports:
-      - "6379:6379"
 
-  # ── Messaging ──────────────────────────────────────────────────────────────
+    profiles:
+      - full
+
+    ports:
+      - "127.0.0.1:6379:6379"
+
+    restart: unless-stopped
+
+  # ========================================
+  # ZOOKEEPER
+  # Optional - full profile
+  # ========================================
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     container_name: zookeeper
+
+    profiles:
+      - full
+
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
 
+    restart: unless-stopped
+
+  # ========================================
+  # APACHE KAFKA
+  # Optional - full profile
+  # ========================================
+
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: kafka
+
+    profiles:
+      - full
+
     depends_on:
       - zookeeper
+
     ports:
-      - "9092:9092"
+      - "127.0.0.1:9092:9092"
+
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
-  # Kafka UI — browse topics and messages at http://localhost:8090
+    restart: unless-stopped
+
+  # ========================================
+  # KAFKA UI
+  # Optional - full profile
+  # ========================================
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
+
+    profiles:
+      - full
+
     depends_on:
       - kafka
+
     ports:
-      - "8090:8080"
+      - "127.0.0.1:8090:8080"
+
     environment:
       KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+    restart: unless-stopped
+
+# ========================================
+# PERSISTENT DATABASE VOLUMES
+# ========================================
 
 volumes:
   postgres_users_data:

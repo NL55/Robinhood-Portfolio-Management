@@ -1,10 +1,40 @@
+
+# ==========================================
+# MAVEN / JAVA
+# ==========================================
+
 HELP.md
 target/
+**/target/
+
 .mvn/wrapper/maven-wrapper.jar
+
 !**/src/main/**/target/
 !**/src/test/**/target/
 
-### STS ###
+# ==========================================
+# ENVIRONMENT VARIABLES / SECRETS
+# ==========================================
+
+.env
+.env.*
+!.env.example
+
+# AWS private keys
+*.pem
+*.key
+
+# ==========================================
+# APPLICATION LOGS
+# ==========================================
+
+*.log
+*-error.txt
+
+# ==========================================
+# SPRING TOOL SUITE
+# ==========================================
+
 .apt_generated
 .classpath
 .factorypath
@@ -13,21 +43,31 @@ target/
 .springBeans
 .sts4-cache
 
-### IntelliJ IDEA ###
-.idea
+# ==========================================
+# INTELLIJ IDEA
+# ==========================================
+
+.idea/
 *.iws
 *.iml
 *.ipr
 
-### NetBeans ###
+# ==========================================
+# NETBEANS
+# ==========================================
+
 /nbproject/private/
 /nbbuild/
 /dist/
 /nbdist/
 /.nb-gradle/
 build/
+
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-### VS Code ###
+# ==========================================
+# VS CODE
+# ==========================================
+
 .vscode/
